@@ -1,0 +1,131 @@
+#include<ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
+#include<string.h>
+
+#define ssid "pointbreak"
+#define key "12345678"
+#define host "stw-iot-server.herokuapp.com"
+
+const char fingerprint[] PROGMEM = "94:FC:F6:23:6C:37:D5:E7:92:78:3C:0B:5F:AD:0C:E4:9E:FD:9E:A8";
+
+int sensor = A0; // the wifi radio status
+
+void setup() {
+  Serial.begin(9600);
+  while(!Serial) {
+  }
+  if(WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("wifi sheild not present");
+    // dont continue
+    while(true);  
+  }
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect();
+    delay(10);
+    Serial.print("status : ");
+    Serial.print(WiFi.status());
+    Serial.print("Attempting to connect to WPA SSID: ");
+    Serial.println(ssid);
+    // Connect to WPA/WPA2 network:
+    WiFi.begin(ssid, key);
+    // wait 10 seconds for connection:
+    delay(10000);
+  }
+  Serial.print("You're connected to the network");
+
+  pinMode(sensor, INPUT);
+}
+
+void loop() {
+  
+  printCurrentNet();
+  int value = analogRead(sensor);
+  Serial.println(value);
+
+  WiFiClientSecure http;    //Declare object of class HTTPClient
+  Serial.printf("Using fingerprint '%s'\n", fingerprint);
+  http.setFingerprint(fingerprint);
+  http.setTimeout(15000); // 15 Seconds
+  delay(1000);
+
+  char ADCData[4]; 
+  char postData[20];
+  char *startData = "{\"data\" : \"";
+  char *endData = "\"}";
+  
+  sprintf(ADCData, "%d", value);   //String to interger conversion
+
+  //Post Data
+  
+  strcpy(postData, startData); 
+  strcat(postData, ADCData); 
+  strcat(postData, endData); 
+  
+
+  int r = 0; // retry
+  Serial.println("starting connection");
+  while((!http.connect(host, 443)) && (r<30)){
+    delay(100);
+    Serial.println(".");
+    r++;
+  }
+  if(r == 30) {
+    Serial.println("failed to connect");
+  }
+  else {
+    Serial.println("successfully connected");
+  }
+  
+    Serial.println("==============");
+  Serial.println(postData);
+  Serial.println("==============");
+  String Link = "/put/a000";
+
+
+  String request = String("POST ") + Link + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Content-Type: application/json"+ "\r\n" +
+               "Content-Length: "+ strlen(postData) + "\r\n\r\n" +
+               postData + "\r\n" +
+               "Connection: close\r\n\r\n";
+               
+  http.print(request);
+  Serial.println("==============");
+  Serial.println(postData);
+  Serial.println("==============");
+  Serial.println(request);
+
+
+  Serial.println("request sent");
+                  
+  while (http.connected()) {
+    String line = http.readStringUntil('\n');
+    if (line == "\r") {
+      Serial.println("headers received");
+      break;
+    }
+  }
+
+  Serial.println("reply was:");
+  Serial.println("==========");
+  String line;
+  while(http.available()){        
+    line = http.readStringUntil('\n');  //Read Line by Line
+    Serial.println(line); //Print response
+  }
+  Serial.println("==========");
+  Serial.println("closing connection");
+  
+  delay(3000);
+}
+
+void printCurrentNet() {
+
+  // print the SSID of the network you're attached to:
+
+  Serial.print("SSID: ");
+
+  Serial.println(WiFi.SSID());
+}
